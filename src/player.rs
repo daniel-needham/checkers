@@ -6,6 +6,15 @@ pub enum Colour {
     White
 }
 
+impl Colour {
+    pub fn other(&self) -> Colour {
+        match self {
+            Colour::Black => Colour::White,
+            Colour::White => Colour::Black,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Player{
     pub colour: Colour,

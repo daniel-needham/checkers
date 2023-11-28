@@ -1,3 +1,4 @@
+use rand::prelude::SliceRandom;
 use crate::board::Board;
 use crate::movedef::Movedef;
 use crate::player::Colour;
@@ -35,13 +36,12 @@ impl<'a> GameManager {
         self.board = Some(board);
     }
 
-    pub fn generate_legal_moves(&self, colour: Colour) -> Vec<Movedef> {
+    pub fn generate_legal_moves(&self, board: &Board, colour: Colour) -> Vec<Movedef> {
         let move_dir: i32 = match colour {
             Colour::White => 1,
             Colour::Black => -1,
         };
         let mut legal_moves: Vec<Movedef> = Vec::new();
-        let board = self.board.as_ref().unwrap();
         let my_pieces = board.get_all_colour_pieces(colour);
         for piece in my_pieces {
             let coord = Board::get_row_col_from_index(piece.loc);
@@ -56,14 +56,11 @@ impl<'a> GameManager {
                 let new_piece = board.get_piece(new_index);
                 match new_piece {
                     Some(_) => {}
-                    None => {
-                        //todo add  if at end of board
-                        legal_moves.push(Movedef {
-                            start: piece.loc,
-                            end: new_index,
-                            taken_piece: None,
-                        })
-                    }
+                    None => legal_moves.push(Movedef {
+                        start: piece.loc,
+                        end: new_index,
+                        taken_piece: None,
+                    }),
                 }
             }
             //diagonal right
@@ -75,14 +72,11 @@ impl<'a> GameManager {
                 let new_piece = board.get_piece(new_index);
                 match new_piece {
                     Some(_) => {}
-                    None => {
-                        //todo add  if at end of board
-                        legal_moves.push(Movedef {
-                            start: piece.loc,
-                            end: new_index,
-                            taken_piece: None,
-                        })
-                    }
+                    None => legal_moves.push(Movedef {
+                        start: piece.loc,
+                        end: new_index,
+                        taken_piece: None,
+                    }),
                 }
             }
             //jump left
@@ -98,19 +92,15 @@ impl<'a> GameManager {
                     new_col,
                 ) {
                     Some(piece_to_take) => {
-                        println!("piece to take: {:?}", piece_to_take);
                         let new_index = Board::get_index_from_row_col(&new_row, &new_col);
                         let new_piece = board.get_piece(new_index);
                         match new_piece {
                             Some(_) => {}
-                            None => {
-                                //todo add  if at end of board
-                                legal_moves.push(Movedef {
-                                    start: piece.loc,
-                                    end: new_index,
-                                    taken_piece: Option::from(piece_to_take),
-                                })
-                            }
+                            None => legal_moves.push(Movedef {
+                                start: piece.loc,
+                                end: new_index,
+                                taken_piece: Option::from(piece_to_take),
+                            }),
                         }
                     }
                     None => {}
@@ -133,20 +123,17 @@ impl<'a> GameManager {
                         let new_piece = board.get_piece(new_index);
                         match new_piece {
                             Some(_) => {}
-                            None => {
-                                //todo add  if at end of board
-                                legal_moves.push(Movedef {
-                                    start: piece.loc,
-                                    end: new_index,
-                                    taken_piece: Option::from(piece_to_take),
-                                })
-                            }
+                            None => legal_moves.push(Movedef {
+                                start: piece.loc,
+                                end: new_index,
+                                taken_piece: Option::from(piece_to_take),
+                            }),
                         }
                     }
                     None => {}
                 }
             }
-        }
+        } //todo king moves
         legal_moves
     }
 
@@ -214,7 +201,8 @@ impl<'a> GameManager {
                     "Your turn! Select a piece to move. E.g '{}-{}'",
                     rand_row, rand_col
                 );
-                let legal_moves = self.generate_legal_moves(self.player_colour.unwrap());
+                let legal_moves =
+                    self.generate_legal_moves(&self.board.unwrap(), self.player_colour.unwrap());
                 let selected_piece = loop {
                     let mut input = String::new();
                     match io::stdin().read_line(&mut input) {
@@ -331,30 +319,83 @@ impl<'a> GameManager {
                     .as_mut()
                     .unwrap()
                     .ingest_movedef(selected_move.unwrap()); //give move to board and update game state
-                println!("{}", self.board.as_ref().unwrap().as_string()); //show move
+                                                             //println!("{}", self.board.as_ref().unwrap().as_string()); //show move
 
-                //testing only
-                if self.player_colour == Some(Colour::White) {
-                    self.player_colour = Some(Colour::Black);
-                    self.ai_colour = Some(Colour::White);
-                } else {
-                    self.player_colour = Some(Colour::White);
-                    self.ai_colour = Some(Colour::Black);
-                }
+                // //testing only
+                // if self.player_colour == Some(Colour::White) {
+                //     self.player_colour = Some(Colour::Black);
+                //     self.ai_colour = Some(Colour::White);
+                // } else {
+                //     self.player_colour = Some(Colour::White);
+                //     self.ai_colour = Some(Colour::Black);
+                // }
+                self.game_state = GameState::AITurn;
                 self.play_game();
                 //testing only
             }
             GameState::AITurn => {
-                println!("{}", self.board.as_ref().unwrap().as_string());
-                println!("fuck you");
+                println!("AI's turn!");
+                let best_move = self.get_best_move(6);
+                println!("AI Move: {:?}", best_move);
+                self.board.as_mut().unwrap().ingest_movedef(best_move);
+                self.game_state = GameState::PlayerTurn;
+                self.play_game();
             }
             GameState::Ended => {
                 println!()
             }
         }
     }
-}
 
+    pub fn minmax(&self, board: Board, depth: i32, maximising_player: bool) -> i32 {
+        if depth == 0 || board.return_winner().is_some() {
+            return board.static_evaluation(self.ai_colour.unwrap());
+        }
+        return if maximising_player {
+            let mut max_eval = i32::MIN;
+            let legal_moves =
+                self.generate_legal_moves(&board, self.player_colour.unwrap());
+            for movedef in legal_moves.iter() {
+                let mut new_board = board.clone();
+                new_board.ingest_movedef(*movedef);
+                let eval = self.minmax(new_board, depth - 1, false);
+                max_eval = std::cmp::max(max_eval, eval);
+            }
+            max_eval
+        } else {
+            let mut min_eval = i32::MAX;
+            let legal_moves =
+                self.generate_legal_moves(&board, self.ai_colour.unwrap());
+            for movedef in legal_moves.iter() {
+                let mut new_board = board.clone();
+                new_board.ingest_movedef(*movedef);
+                let eval = self.minmax(new_board, depth - 1, true);
+                min_eval = std::cmp::min(min_eval, eval);
+            }
+            min_eval
+        };
+    }
+
+    pub fn get_best_move(&self, depth: i32) -> Movedef {
+        let board = self.board.unwrap().clone();
+        let legal_moves = self.generate_legal_moves(&board,self.ai_colour.unwrap());
+        let mut best_moves = Vec::new();
+        let mut best_eval = i32::MIN;
+        for movedef in legal_moves.iter() {
+            let mut new_board = self.board.unwrap().clone();
+            new_board.ingest_movedef(*movedef);
+            let eval = self.minmax(new_board, depth - 1, false);
+            if eval >= best_eval {
+                best_eval = eval;
+                best_moves.push(*movedef);
+            }
+        }
+        let mut rng = rand::thread_rng();
+        let best_move = best_moves.as_slice().choose(&mut rng).unwrap();
+        println!("best eval: {}", best_eval);
+        *best_move
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -375,7 +416,6 @@ mod tests {
         assert_eq!(b.squares[23], None);
         assert_eq!(b.squares[30].unwrap().colour, Colour::White);
     }
-
     #[test]
     fn take_piece() {
         let mut b = Board::new();
@@ -458,7 +498,11 @@ mod tests {
         };
         b.ingest_movedef(m);
         println!("{}", b.as_string());
-        assert_eq!(b.squares[Board::get_index_from_row_col(&7, &2)].unwrap().king, true);
+        assert_eq!(
+            b.squares[Board::get_index_from_row_col(&7, &2)]
+                .unwrap()
+                .king,
+            true
+        );
     }
-
 }

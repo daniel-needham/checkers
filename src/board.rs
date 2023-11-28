@@ -4,6 +4,8 @@ use std::convert::Infallible;
 use std::fmt::format;
 use std::{fmt, mem};
 use tabled::settings::formatting::TrimStrategy::Horizontal;
+use tabled::settings::{Height, Style, Width};
+use tabled::Table;
 use tabled::tables::IterTable;
 
 const BOARD_SIZE: usize = 8;
@@ -43,22 +45,22 @@ impl Piece {
         match self.colour {
             Colour::Black => {
                 if self.king {
-                    "████  \n ████".to_string()
+                    " 🔳 ".to_string()
                 } else {
-                    " ██  \n  ██".to_string()
+                    " ⬛️ ".to_string()
                 }
             }
             Colour::White => {
                 if self.king {
-                    " ●● \n  ●●".to_string()
+                    " 🔲 ".to_string()
                 } else {
-                    " ●  \n  ●".to_string()
+                    " ⬜️ ".to_string()
                 }
             }
         }
     }
 }
-
+#[derive(Clone, Copy, PartialEq)]
 pub struct Board {
     pub squares: [Option<Piece>; BOARD_SIZE.pow(2)],
 }
@@ -127,7 +129,7 @@ impl Board {
                 let x = self.squares[x];
                 match x {
                     None => {
-                        format!("({}-{})\n\n", row, col)
+                        format!("({}-{})\n", row, col)
                     }
                     Some(_) => {
                         format!("({}-{})\n{}", row, col, x.unwrap().as_piece_string())
@@ -136,13 +138,16 @@ impl Board {
             })
         });
 
-        let table = IterTable::new(iterator).to_string();
-        table
+        let mut table = IterTable::new(iterator);
+        let table = table.clone().with(Style::extended());
+
+        table.to_string()
     }
 
     pub fn move_piece(&mut self, old_index: usize, new_index: usize) {
         if new_index >= BOARD_SIZE.pow(2) || self.squares[new_index] != None {
-            panic!("Invalid move")
+            println!("{}", self.as_string());
+            panic!("Invalid move from ind: {}, coord: {:?} to ind: {}, coord:{:?}", old_index, Board::get_row_col_from_index(old_index), new_index, Board::get_row_col_from_index(new_index));
         }
         let piece = self.squares[old_index].unwrap();
         let mut piece_copy = piece.clone();
@@ -208,5 +213,31 @@ impl Board {
         {
             piece.make_king();
         }
+    }
+
+    pub fn return_winner(&self) -> Option<Colour> {
+        if self.get_all_colour_pieces(Colour::Black).is_empty() {Some(Colour::White)}
+        else if self.get_all_colour_pieces(Colour::White).is_empty() {Some(Colour::Black)}
+        else {None}
+    }
+
+    pub fn static_evaluation(&self, colour: Colour) -> i32 {
+        let mut score = 0;
+        for piece in self.get_all_colour_pieces(colour) {
+            if piece.king {
+                score += 5;
+            } else {
+                score += 3;
+            }
+        }
+        let colour = colour.other();
+        for piece in self.get_all_colour_pieces(colour) {
+            if piece.king {
+                score -= 5;
+            } else {
+                score -= 3;
+            }
+        }
+        score
     }
 }
