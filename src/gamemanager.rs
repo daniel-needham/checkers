@@ -6,6 +6,7 @@ use crate::player::Player;
 use rand::seq::IteratorRandom;
 use rand::Rng;
 use std::io;
+use std::time::Instant;
 use tabled::settings::Color;
 
 enum GameState {
@@ -335,9 +336,12 @@ impl<'a> GameManager {
             }
             GameState::AITurn => {
                 println!("AI's turn!");
-                let best_move = self.get_best_move(6);
+                let start_time = Instant::now();
+                let (best_move, nodes_evaluated) = self.get_best_move(11);
+                let end_time = Instant::now();
                 println!("AI Move: {:?}", best_move);
                 self.board.as_mut().unwrap().ingest_movedef(best_move);
+                println!("AI move made in {}ms, {} evaluations made.", end_time.duration_since(start_time).as_millis(), nodes_evaluated);
                 self.game_state = GameState::PlayerTurn;
                 self.play_game();
             }
@@ -347,9 +351,10 @@ impl<'a> GameManager {
         }
     }
 
-    pub fn minmax(&self, board: Board, depth: i32, maximising_player: bool) -> i32 {
+    pub fn minmax(&self, board: Board, depth: i32, maximising_player: bool, mut alpha: i32, mut beta: i32) -> (i32, i32) {
+        let mut nodes_evaluated = 1;
         if depth == 0 || board.return_winner().is_some() {
-            return board.static_evaluation(self.ai_colour.unwrap());
+            return (board.static_evaluation(self.ai_colour.unwrap()), nodes_evaluated);
         }
         return if maximising_player {
             let mut max_eval = i32::MIN;
@@ -358,10 +363,15 @@ impl<'a> GameManager {
             for movedef in legal_moves.iter() {
                 let mut new_board = board.clone();
                 new_board.ingest_movedef(*movedef);
-                let eval = self.minmax(new_board, depth - 1, false);
+                let (eval, nodes) = self.minmax(new_board, depth - 1, false, alpha, beta);
                 max_eval = std::cmp::max(max_eval, eval);
+                alpha = std::cmp::max(alpha, max_eval);
+                nodes_evaluated += nodes;
+                if beta <= alpha {
+                    break;
+                }
             }
-            max_eval
+            (max_eval, nodes_evaluated)
         } else {
             let mut min_eval = i32::MAX;
             let legal_moves =
@@ -369,22 +379,30 @@ impl<'a> GameManager {
             for movedef in legal_moves.iter() {
                 let mut new_board = board.clone();
                 new_board.ingest_movedef(*movedef);
-                let eval = self.minmax(new_board, depth - 1, true);
+                let (eval, nodes) = self.minmax(new_board, depth - 1, true, alpha, beta);
                 min_eval = std::cmp::min(min_eval, eval);
+                beta = std::cmp::min(beta, min_eval);
+                nodes_evaluated += nodes;
+                if beta <= alpha {
+                    break;
+                }
             }
-            min_eval
+            (min_eval, nodes_evaluated)
         };
     }
 
-    pub fn get_best_move(&self, depth: i32) -> Movedef {
+    pub fn get_best_move(&self, depth: i32) -> (Movedef, i32) {
         let board = self.board.unwrap().clone();
         let legal_moves = self.generate_legal_moves(&board,self.ai_colour.unwrap());
         let mut best_moves = Vec::new();
         let mut best_eval = i32::MIN;
+        let mut nodes_evaluated = 0;
         for movedef in legal_moves.iter() {
             let mut new_board = self.board.unwrap().clone();
             new_board.ingest_movedef(*movedef);
-            let eval = self.minmax(new_board, depth - 1, false);
+            let ret = self.minmax(new_board, depth - 1, false, i32::MIN, i32::MAX);
+            let eval = ret.0;
+            nodes_evaluated += ret.1;
             if eval >= best_eval {
                 best_eval = eval;
                 best_moves.push(*movedef);
@@ -393,7 +411,7 @@ impl<'a> GameManager {
         let mut rng = rand::thread_rng();
         let best_move = best_moves.as_slice().choose(&mut rng).unwrap();
         println!("best eval: {}", best_eval);
-        *best_move
+        (*best_move, nodes_evaluated)
     }
 }
 
