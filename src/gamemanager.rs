@@ -1,8 +1,8 @@
-use rand::prelude::SliceRandom;
 use crate::board::Board;
 use crate::movedef::Movedef;
 use crate::player::Colour;
 use crate::player::Player;
+use rand::prelude::SliceRandom;
 use rand::seq::IteratorRandom;
 use rand::Rng;
 use std::io;
@@ -21,6 +21,7 @@ pub struct GameManager {
     board: Option<Board>,
     player_colour: Option<Colour>,
     ai_colour: Option<Colour>,
+    move_vectors: [(i32, i32); 8],
 }
 
 impl<'a> GameManager {
@@ -30,6 +31,16 @@ impl<'a> GameManager {
             board: None,
             player_colour: None,
             ai_colour: None,
+            move_vectors: [
+                (1, -1),
+                (1, 1),
+                (2, -2),
+                (2, 2),
+                (-1, -1),
+                (-1, 1),
+                (-2, -2),
+                (-2, 2),
+            ],
         }
     }
 
@@ -38,102 +49,144 @@ impl<'a> GameManager {
     }
 
     pub fn generate_legal_moves(&self, board: &Board, colour: Colour) -> Vec<Movedef> {
-        let move_dir: i32 = match colour {
-            Colour::White => 1,
-            Colour::Black => -1,
-        };
         let mut legal_moves: Vec<Movedef> = Vec::new();
         let my_pieces = board.get_all_colour_pieces(colour);
         for piece in my_pieces {
             let coord = Board::get_row_col_from_index(piece.loc);
             let row = coord.0 as i32;
             let col = coord.1 as i32;
-            //diagonal left
-            let new_row = (row + move_dir) as usize;
-            let new_col = (col - 1) as usize;
-            if Board::inside_board(new_row as usize, new_col as usize) {
-                // skip if outside board
-                let new_index = Board::get_index_from_row_col(&new_row, &new_col);
-                let new_piece = board.get_piece(new_index);
-                match new_piece {
-                    Some(_) => {}
-                    None => legal_moves.push(Movedef {
-                        start: piece.loc,
-                        end: new_index,
-                        taken_piece: None,
-                    }),
+            let piece_move_vecs = if piece.king {
+                &self.move_vectors
+            } else if colour == Colour::White {
+                &self.move_vectors[..4]
+            } else {
+                &self.move_vectors[4..]
+            };
+
+            for move_vec in piece_move_vecs.iter() {
+                let (new_row, new_col) = (row + move_vec.0, col + move_vec.1);
+                if !Board::inside_board(new_row as usize, new_col as usize) {
+                    continue;
                 }
-            }
-            //diagonal right
-            let new_row = (row + move_dir) as usize;
-            let new_col = (col + 1) as usize;
-            if Board::inside_board(new_row, new_col) {
-                // skip if outside board
-                let new_index = Board::get_index_from_row_col(&new_row, &new_col);
+                let new_index = Board::get_index_from_row_col(new_row as usize, new_col as usize);
                 let new_piece = board.get_piece(new_index);
-                match new_piece {
-                    Some(_) => {}
-                    None => legal_moves.push(Movedef {
-                        start: piece.loc,
-                        end: new_index,
-                        taken_piece: None,
-                    }),
+                if new_piece.is_some() {
+                    continue;
                 }
-            }
-            //jump left
-            let new_row = (row + (move_dir * 2)) as usize;
-            let new_col = (col - 2) as usize;
-            if Board::inside_board(new_row, new_col) {
-                // skip if outside board
-                match board.opposing_piece_between(
-                    colour,
-                    row as usize,
-                    col as usize,
-                    new_row,
-                    new_col,
-                ) {
-                    Some(piece_to_take) => {
-                        let new_index = Board::get_index_from_row_col(&new_row, &new_col);
-                        let new_piece = board.get_piece(new_index);
-                        match new_piece {
-                            Some(_) => {}
-                            None => legal_moves.push(Movedef {
+                if move_vec.0.abs() == 2 {
+                    //jump
+                    match board.opposing_piece_between(
+                        colour,
+                        row as usize,
+                        col as usize,
+                        new_row as usize,
+                        new_col as usize,
+                    ) {
+                        None => {}
+                        Some(piece_to_take) => {
+                            legal_moves.push(Movedef {
                                 start: piece.loc,
                                 end: new_index,
                                 taken_piece: Option::from(piece_to_take),
-                            }),
+                            });
                         }
                     }
-                    None => {}
+                } else {
+                    //move
+                    legal_moves.push(Movedef {
+                        start: piece.loc,
+                        end: new_index,
+                        taken_piece: None,
+                    });
                 }
             }
-            //jump right
-            let new_row = (row + (move_dir * 2)) as usize;
-            let new_col = (col + 2) as usize;
-            if Board::inside_board(new_row, new_col) {
-                // skip if outside board
-                match board.opposing_piece_between(
-                    colour,
-                    row as usize,
-                    col as usize,
-                    new_row,
-                    new_col,
-                ) {
-                    Some(piece_to_take) => {
-                        let new_index = Board::get_index_from_row_col(&new_row, &new_col);
-                        let new_piece = board.get_piece(new_index);
-                        match new_piece {
-                            Some(_) => {}
-                            None => legal_moves.push(Movedef {
-                                start: piece.loc,
-                                end: new_index,
-                                taken_piece: Option::from(piece_to_take),
-                            }),
-                        }
-                    }
-                    None => {}
-                }
-            }
+
+            // //diagonal left
+            // let new_row = (row + move_dir) as usize;
+            // let new_col = (col - 1) as usize;
+            // if Board::inside_board(new_row as usize, new_col as usize) {
+            //     // skip if outside board
+            //     let new_index = Board::get_index_from_row_col(&new_row, &new_col);
+            //     let new_piece = board.get_piece(new_index);
+            //     match new_piece {
+            //         Some(_) => {}
+            //         None => legal_moves.push(Movedef {
+            //             start: piece.loc,
+            //             end: new_index,
+            //             taken_piece: None,
+            //         }),
+            //     }
+            // }
+            // //diagonal right
+            // let new_row = (row + move_dir) as usize;
+            // let new_col = (col + 1) as usize;
+            // if Board::inside_board(new_row, new_col) {
+            //     // skip if outside board
+            //     let new_index = Board::get_index_from_row_col(&new_row, &new_col);
+            //     let new_piece = board.get_piece(new_index);
+            //     match new_piece {
+            //         Some(_) => {}
+            //         None => legal_moves.push(Movedef {
+            //             start: piece.loc,
+            //             end: new_index,
+            //             taken_piece: None,
+            //         }),
+            //     }
+            // }
+            // //jump left
+            // let new_row = (row + (move_dir * 2)) as usize;
+            // let new_col = (col - 2) as usize;
+            // if Board::inside_board(new_row, new_col) {
+            //     // skip if outside board
+            //     match board.opposing_piece_between(
+            //         colour,
+            //         row as usize,
+            //         col as usize,
+            //         new_row,
+            //         new_col,
+            //     ) {
+            //         Some(piece_to_take) => {
+            //             let new_index = Board::get_index_from_row_col(&new_row, &new_col);
+            //             let new_piece = board.get_piece(new_index);
+            //             match new_piece {
+            //                 Some(_) => {}
+            //                 None => legal_moves.push(Movedef {
+            //                     start: piece.loc,
+            //                     end: new_index,
+            //                     taken_piece: Option::from(piece_to_take),
+            //                 }),
+            //             }
+            //         }
+            //         None => {}
+            //     }
+            // }
+            // //jump right
+            // let new_row = (row + (move_dir * 2)) as usize;
+            // let new_col = (col + 2) as usize;
+            // if Board::inside_board(new_row, new_col) {
+            //     // skip if outside board
+            //     match board.opposing_piece_between(
+            //         colour,
+            //         row as usize,
+            //         col as usize,
+            //         new_row,
+            //         new_col,
+            //     ) {
+            //         Some(piece_to_take) => {
+            //             let new_index = Board::get_index_from_row_col(&new_row, &new_col);
+            //             let new_piece = board.get_piece(new_index);
+            //             match new_piece {
+            //                 Some(_) => {}
+            //                 None => legal_moves.push(Movedef {
+            //                     start: piece.loc,
+            //                     end: new_index,
+            //                     taken_piece: Option::from(piece_to_take),
+            //                 }),
+            //             }
+            //         }
+            //         None => {}
+            //     }
+            // }
         } //todo king moves
         legal_moves
     }
@@ -228,7 +281,7 @@ impl<'a> GameManager {
                                 println!("That's not on the board. Try again.");
                                 continue;
                             }
-                            let index = Board::get_index_from_row_col(&row, &col);
+                            let index = Board::get_index_from_row_col(row, col);
                             let piece = self.board.as_ref().unwrap().get_piece(index);
                             match piece {
                                 Some(piece) => {
@@ -283,7 +336,7 @@ impl<'a> GameManager {
                                 println!("You can't move to the same square. Try again.");
                                 continue;
                             }
-                            let index = Board::get_index_from_row_col(&row, &col);
+                            let index = Board::get_index_from_row_col(row, col);
                             let piece = self.board.as_ref().unwrap().get_piece(index);
                             match piece {
                                 Some(_) => {
@@ -337,11 +390,15 @@ impl<'a> GameManager {
             GameState::AITurn => {
                 println!("AI's turn!");
                 let start_time = Instant::now();
-                let (best_move, nodes_evaluated) = self.get_best_move(11);
+                let (best_move, nodes_evaluated) = self.get_best_move(4);
                 let end_time = Instant::now();
                 println!("AI Move: {:?}", best_move);
                 self.board.as_mut().unwrap().ingest_movedef(best_move);
-                println!("AI move made in {}ms, {} evaluations made.", end_time.duration_since(start_time).as_millis(), nodes_evaluated);
+                println!(
+                    "AI move made in {}ms, {} evaluations made.",
+                    end_time.duration_since(start_time).as_millis(),
+                    nodes_evaluated
+                );
                 self.game_state = GameState::PlayerTurn;
                 self.play_game();
             }
@@ -351,15 +408,24 @@ impl<'a> GameManager {
         }
     }
 
-    pub fn minmax(&self, board: Board, depth: i32, maximising_player: bool, mut alpha: i32, mut beta: i32) -> (i32, i32) {
+    pub fn minmax(
+        &self,
+        board: Board,
+        depth: i32,
+        maximising_player: bool,
+        mut alpha: i32,
+        mut beta: i32,
+    ) -> (i32, i32) {
         let mut nodes_evaluated = 1;
         if depth == 0 || board.return_winner().is_some() {
-            return (board.static_evaluation(self.ai_colour.unwrap()), nodes_evaluated);
+            return (
+                board.static_evaluation(self.ai_colour.unwrap()),
+                nodes_evaluated,
+            );
         }
         return if maximising_player {
             let mut max_eval = i32::MIN;
-            let legal_moves =
-                self.generate_legal_moves(&board, self.player_colour.unwrap());
+            let legal_moves = self.generate_legal_moves(&board, self.player_colour.unwrap());
             for movedef in legal_moves.iter() {
                 let mut new_board = board.clone();
                 new_board.ingest_movedef(*movedef);
@@ -374,8 +440,7 @@ impl<'a> GameManager {
             (max_eval, nodes_evaluated)
         } else {
             let mut min_eval = i32::MAX;
-            let legal_moves =
-                self.generate_legal_moves(&board, self.ai_colour.unwrap());
+            let legal_moves = self.generate_legal_moves(&board, self.ai_colour.unwrap());
             for movedef in legal_moves.iter() {
                 let mut new_board = board.clone();
                 new_board.ingest_movedef(*movedef);
@@ -393,7 +458,7 @@ impl<'a> GameManager {
 
     pub fn get_best_move(&self, depth: i32) -> (Movedef, i32) {
         let board = self.board.unwrap().clone();
-        let legal_moves = self.generate_legal_moves(&board,self.ai_colour.unwrap());
+        let legal_moves = self.generate_legal_moves(&board, self.ai_colour.unwrap());
         let mut best_moves = Vec::new();
         let mut best_eval = i32::MIN;
         let mut nodes_evaluated = 0;
@@ -468,58 +533,56 @@ mod tests {
     fn piece_gets_crowned() {
         let mut b = Board::new();
         let m = Movedef {
-            start: Board::get_index_from_row_col(&5, &4),
-            end: Board::get_index_from_row_col(&4, &5),
+            start: Board::get_index_from_row_col(5, 4),
+            end: Board::get_index_from_row_col(4, 5),
             taken_piece: None,
         };
         b.ingest_movedef(m);
         let m = Movedef {
-            start: Board::get_index_from_row_col(&4, &5),
-            end: Board::get_index_from_row_col(&3, &6),
+            start: Board::get_index_from_row_col(4, 5),
+            end: Board::get_index_from_row_col(3, 6),
             taken_piece: None,
         };
         b.ingest_movedef(m);
         let m = Movedef {
-            start: Board::get_index_from_row_col(&6, &3),
-            end: Board::get_index_from_row_col(&5, &4),
+            start: Board::get_index_from_row_col(6, 3),
+            end: Board::get_index_from_row_col(5, 4),
             taken_piece: None,
         };
         b.ingest_movedef(m);
         let m = Movedef {
-            start: Board::get_index_from_row_col(&5, &4),
-            end: Board::get_index_from_row_col(&4, &3),
+            start: Board::get_index_from_row_col(5, 4),
+            end: Board::get_index_from_row_col(4, 3),
             taken_piece: None,
         };
         b.ingest_movedef(m);
         let m = Movedef {
-            start: Board::get_index_from_row_col(&7, &2),
-            end: Board::get_index_from_row_col(&6, &3),
+            start: Board::get_index_from_row_col(7, 2),
+            end: Board::get_index_from_row_col(6, 3),
             taken_piece: None,
         };
         b.ingest_movedef(m);
         let m = Movedef {
-            start: Board::get_index_from_row_col(&2, &7),
-            end: Board::get_index_from_row_col(&4, &5),
-            taken_piece: Option::from(Board::get_index_from_row_col(&3, &6)),
+            start: Board::get_index_from_row_col(2, 7),
+            end: Board::get_index_from_row_col(4, 5),
+            taken_piece: Option::from(Board::get_index_from_row_col(3, 6)),
         };
         b.ingest_movedef(m);
         let m = Movedef {
-            start: Board::get_index_from_row_col(&4, &5),
-            end: Board::get_index_from_row_col(&5, &4),
+            start: Board::get_index_from_row_col(4, 5),
+            end: Board::get_index_from_row_col(5, 4),
             taken_piece: None,
         };
         b.ingest_movedef(m);
         let m = Movedef {
-            start: Board::get_index_from_row_col(&5, &4),
-            end: Board::get_index_from_row_col(&7, &2),
-            taken_piece: Option::from(Board::get_index_from_row_col(&6, &3)),
+            start: Board::get_index_from_row_col(5, 4),
+            end: Board::get_index_from_row_col(7, 2),
+            taken_piece: Option::from(Board::get_index_from_row_col(6, 3)),
         };
         b.ingest_movedef(m);
         println!("{}", b.as_string());
         assert_eq!(
-            b.squares[Board::get_index_from_row_col(&7, &2)]
-                .unwrap()
-                .king,
+            b.squares[Board::get_index_from_row_col(7, 2)].unwrap().king,
             true
         );
     }

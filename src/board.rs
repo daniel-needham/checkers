@@ -99,8 +99,8 @@ impl Board {
         (row, col)
     }
 
-    pub fn get_index_from_row_col(row: &usize, col: &usize) -> usize {
-        if row >= &BOARD_SIZE || col >= &BOARD_SIZE {
+    pub fn get_index_from_row_col(row: usize, col: usize) -> usize {
+        if row >= BOARD_SIZE || col >= BOARD_SIZE {
             panic!("not a valid board pos")
         }
         let mut num = row * BOARD_SIZE;
@@ -125,7 +125,7 @@ impl Board {
     pub fn as_string(&self) -> String {
         let iterator = (0..BOARD_SIZE).map(|row| {
             (0..BOARD_SIZE).map(move |col| {
-                let x = Board::get_index_from_row_col(&row, &col);
+                let x = Board::get_index_from_row_col(row, col);
                 let x = self.squares[x];
                 match x {
                     None => {
@@ -185,7 +185,7 @@ impl Board {
     ) -> Option<usize> {
         let row = (row_s + row_e) / 2;
         let col = (col_s + col_e) / 2;
-        let index = Board::get_index_from_row_col(&row, &col);
+        let index = Board::get_index_from_row_col(row, col);
         match self.squares[index] {
             Some(piece) => {
                 if piece.colour != user_colour {
