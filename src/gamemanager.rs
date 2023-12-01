@@ -1,15 +1,14 @@
 use crate::board::Board;
 use crate::movedef::Movedef;
 use crate::player::Colour;
-use crate::player::Player;
 use rand::prelude::SliceRandom;
 use rand::seq::IteratorRandom;
 use rand::Rng;
-use std::io;
+use std::{io, process};
 use std::time::Instant;
-use tabled::settings::Color;
 
 enum GameState {
+    Initialising,
     Starting,
     PlayerTurn,
     AITurn,
@@ -22,12 +21,13 @@ pub struct GameManager {
     player_colour: Option<Colour>,
     ai_colour: Option<Colour>,
     move_vectors: [(i32, i32); 8],
+    minimax_depth: i32,
 }
 
 impl<'a> GameManager {
     pub fn new() -> GameManager {
         Self {
-            game_state: GameState::Starting,
+            game_state: GameState::Initialising,
             board: None,
             player_colour: None,
             ai_colour: None,
@@ -41,6 +41,7 @@ impl<'a> GameManager {
                 (-2, -2),
                 (-2, 2),
             ],
+            minimax_depth: 3,
         }
     }
 
@@ -100,99 +101,41 @@ impl<'a> GameManager {
                     });
                 }
             }
-
-            // //diagonal left
-            // let new_row = (row + move_dir) as usize;
-            // let new_col = (col - 1) as usize;
-            // if Board::inside_board(new_row as usize, new_col as usize) {
-            //     // skip if outside board
-            //     let new_index = Board::get_index_from_row_col(&new_row, &new_col);
-            //     let new_piece = board.get_piece(new_index);
-            //     match new_piece {
-            //         Some(_) => {}
-            //         None => legal_moves.push(Movedef {
-            //             start: piece.loc,
-            //             end: new_index,
-            //             taken_piece: None,
-            //         }),
-            //     }
-            // }
-            // //diagonal right
-            // let new_row = (row + move_dir) as usize;
-            // let new_col = (col + 1) as usize;
-            // if Board::inside_board(new_row, new_col) {
-            //     // skip if outside board
-            //     let new_index = Board::get_index_from_row_col(&new_row, &new_col);
-            //     let new_piece = board.get_piece(new_index);
-            //     match new_piece {
-            //         Some(_) => {}
-            //         None => legal_moves.push(Movedef {
-            //             start: piece.loc,
-            //             end: new_index,
-            //             taken_piece: None,
-            //         }),
-            //     }
-            // }
-            // //jump left
-            // let new_row = (row + (move_dir * 2)) as usize;
-            // let new_col = (col - 2) as usize;
-            // if Board::inside_board(new_row, new_col) {
-            //     // skip if outside board
-            //     match board.opposing_piece_between(
-            //         colour,
-            //         row as usize,
-            //         col as usize,
-            //         new_row,
-            //         new_col,
-            //     ) {
-            //         Some(piece_to_take) => {
-            //             let new_index = Board::get_index_from_row_col(&new_row, &new_col);
-            //             let new_piece = board.get_piece(new_index);
-            //             match new_piece {
-            //                 Some(_) => {}
-            //                 None => legal_moves.push(Movedef {
-            //                     start: piece.loc,
-            //                     end: new_index,
-            //                     taken_piece: Option::from(piece_to_take),
-            //                 }),
-            //             }
-            //         }
-            //         None => {}
-            //     }
-            // }
-            // //jump right
-            // let new_row = (row + (move_dir * 2)) as usize;
-            // let new_col = (col + 2) as usize;
-            // if Board::inside_board(new_row, new_col) {
-            //     // skip if outside board
-            //     match board.opposing_piece_between(
-            //         colour,
-            //         row as usize,
-            //         col as usize,
-            //         new_row,
-            //         new_col,
-            //     ) {
-            //         Some(piece_to_take) => {
-            //             let new_index = Board::get_index_from_row_col(&new_row, &new_col);
-            //             let new_piece = board.get_piece(new_index);
-            //             match new_piece {
-            //                 Some(_) => {}
-            //                 None => legal_moves.push(Movedef {
-            //                     start: piece.loc,
-            //                     end: new_index,
-            //                     taken_piece: Option::from(piece_to_take),
-            //                 }),
-            //             }
-            //         }
-            //         None => {}
-            //     }
-            // }
-        } //todo king moves
+        }
+        //finally check if any jumps are available, if so remove all non-jumps
+        let contains_jump = legal_moves.iter().any(|&movedef| movedef.taken_piece.is_some());
+        if contains_jump {
+            legal_moves.retain(|&movedef| movedef.taken_piece.is_some());
+        }
         legal_moves
     }
 
     pub fn play_game(mut self) {
         match self.game_state {
+            GameState::Initialising => {
+                println!("Welcome to checkers!");
+                println!("Please choose a difficulty level: 1-4");
+                println!("1: Easy");
+                println!("2: Medium");
+                println!("3: Hard");
+                println!("4: Impossible");
+                let mut input = String::new();
+                while input != "1" && input != "2" && input != "3" && input != "4" {
+                    match io::stdin().read_line(&mut input) {
+                        Ok(_) => {
+                            // Print the user's input
+                            println!("You entered: {}", input.trim());
+                            input = input.trim().to_string();
+                        }
+                        Err(error) => {
+                            eprintln!("Error reading input: {}", error);
+                        }
+                    }
+                }
+                self.minimax_depth = input.parse::<i32>().unwrap() * 3;
+                self.game_state = GameState::Starting;
+                self.play_game();
+            }
             GameState::Starting => {
                 // flip a coin to decide who goes first
                 let mut rng = rand::thread_rng();
@@ -373,37 +316,56 @@ impl<'a> GameManager {
                     .as_mut()
                     .unwrap()
                     .ingest_movedef(selected_move.unwrap()); //give move to board and update game state
-                                                             //println!("{}", self.board.as_ref().unwrap().as_string()); //show move
 
-                // //testing only
-                // if self.player_colour == Some(Colour::White) {
-                //     self.player_colour = Some(Colour::Black);
-                //     self.ai_colour = Some(Colour::White);
-                // } else {
-                //     self.player_colour = Some(Colour::White);
-                //     self.ai_colour = Some(Colour::Black);
-                // }
-                self.game_state = GameState::AITurn;
+                if self.board.as_ref().unwrap().return_winner().is_some() {
+                    self.game_state = GameState::Ended;
+                } else{
+                    self.game_state = GameState::AITurn;
+                }
+                println!("{}", self.board.as_ref().unwrap().as_string());
                 self.play_game();
-                //testing only
             }
             GameState::AITurn => {
                 println!("AI's turn!");
                 let start_time = Instant::now();
-                let (best_move, nodes_evaluated) = self.get_best_move(4);
+                let (best_move, nodes_evaluated) = self.get_best_move(self.minimax_depth);
                 let end_time = Instant::now();
-                println!("AI Move: {:?}", best_move);
                 self.board.as_mut().unwrap().ingest_movedef(best_move);
                 println!(
                     "AI move made in {}ms, {} evaluations made.",
                     end_time.duration_since(start_time).as_millis(),
                     nodes_evaluated
                 );
-                self.game_state = GameState::PlayerTurn;
+                if self.board.as_ref().unwrap().return_winner().is_some() {
+                    self.game_state = GameState::Ended;
+                } else{
+                    self.game_state = GameState::PlayerTurn;
+                }
                 self.play_game();
             }
             GameState::Ended => {
-                println!()
+                println!("Game over! - {} wins!", self.board.as_ref().unwrap().return_winner().unwrap());
+                println!("Play again? Y/N");
+                let mut input = String::new();
+                while input != "Y" && input != "N" {
+                    match io::stdin().read_line(&mut input) {
+                        Ok(_) => {
+                            // Print the user's input
+                            println!("You entered: {}", input.trim());
+                            input = input.trim().to_string();
+                        }
+                        Err(error) => {
+                            eprintln!("Error reading input: {}", error);
+                        }
+                    }
+                }
+                if input == "Y" {
+                    self.game_state = GameState::Starting;
+                    self.play_game();
+                } else {
+                    println!("Thanks for playing!");
+                    process::exit(0)
+                }
             }
         }
     }
@@ -475,7 +437,6 @@ impl<'a> GameManager {
         }
         let mut rng = rand::thread_rng();
         let best_move = best_moves.as_slice().choose(&mut rng).unwrap();
-        println!("best eval: {}", best_eval);
         (*best_move, nodes_evaluated)
     }
 }
@@ -586,4 +547,74 @@ mod tests {
             true
         );
     }
+
+    #[test]
+    fn king_moves_backwards() {
+        let mut b = Board::new();
+        let m = Movedef {
+            start: Board::get_index_from_row_col(5, 4),
+            end: Board::get_index_from_row_col(4, 5),
+            taken_piece: None,
+        };
+        b.ingest_movedef(m);
+        let m = Movedef {
+            start: Board::get_index_from_row_col(4, 5),
+            end: Board::get_index_from_row_col(3, 6),
+            taken_piece: None,
+        };
+        b.ingest_movedef(m);
+        let m = Movedef {
+            start: Board::get_index_from_row_col(6, 3),
+            end: Board::get_index_from_row_col(5, 4),
+            taken_piece: None,
+        };
+        b.ingest_movedef(m);
+        let m = Movedef {
+            start: Board::get_index_from_row_col(5, 4),
+            end: Board::get_index_from_row_col(4, 3),
+            taken_piece: None,
+        };
+        b.ingest_movedef(m);
+        let m = Movedef {
+            start: Board::get_index_from_row_col(7, 2),
+            end: Board::get_index_from_row_col(6, 3),
+            taken_piece: None,
+        };
+        b.ingest_movedef(m);
+        let m = Movedef {
+            start: Board::get_index_from_row_col(2, 7),
+            end: Board::get_index_from_row_col(4, 5),
+            taken_piece: Option::from(Board::get_index_from_row_col(3, 6)),
+        };
+        b.ingest_movedef(m);
+        let m = Movedef {
+            start: Board::get_index_from_row_col(4, 5),
+            end: Board::get_index_from_row_col(5, 4),
+            taken_piece: None,
+        };
+        b.ingest_movedef(m);
+        let m = Movedef {
+            start: Board::get_index_from_row_col(5, 4),
+            end: Board::get_index_from_row_col(7, 2),
+            taken_piece: Option::from(Board::get_index_from_row_col(6, 3)),
+        };
+        b.ingest_movedef(m);
+        println!("{}", b.as_string());
+        assert_eq!(
+            b.squares[Board::get_index_from_row_col(7, 2)].unwrap().king,
+            true
+        );
+        let m = Movedef {
+            start: Board::get_index_from_row_col(7, 2),
+            end: Board::get_index_from_row_col(6, 3),
+            taken_piece: None,
+        };
+        b.ingest_movedef(m);
+        assert_eq!(
+            b.squares[Board::get_index_from_row_col(6, 3)].unwrap().king,
+            true
+        );
+        println!("{}", b.as_string());
+    }
+
 }

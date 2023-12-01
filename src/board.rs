@@ -1,11 +1,7 @@
 use crate::movedef::Movedef;
-use crate::player::{Colour, Player};
-use std::convert::Infallible;
-use std::fmt::format;
-use std::{fmt, mem};
-use tabled::settings::formatting::TrimStrategy::Horizontal;
-use tabled::settings::{Height, Style, Width};
-use tabled::Table;
+use crate::player::{Colour};
+use std::{fmt};
+use tabled::settings::{Style};
 use tabled::tables::IterTable;
 
 const BOARD_SIZE: usize = 8;
@@ -21,7 +17,7 @@ impl Piece {
         if loc >= BOARD_SIZE.pow(2) {
             panic!("coord larger that board size");
         } else {
-            let mut me = Self {
+            let me = Self {
                 loc,
                 king: false,
                 colour,
@@ -45,14 +41,14 @@ impl Piece {
         match self.colour {
             Colour::Black => {
                 if self.king {
-                    " 🔳 ".to_string()
+                    " 🔲 ".to_string()
                 } else {
                     " ⬛️ ".to_string()
                 }
             }
             Colour::White => {
                 if self.king {
-                    " 🔲 ".to_string()
+                    " 🔳 ".to_string()
                 } else {
                     " ⬜️ ".to_string()
                 }
@@ -115,7 +111,7 @@ impl Board {
     }
 
     pub fn piece_get_crowned(loc: usize, colour: Colour) -> bool {
-        let (row, col) = Board::get_row_col_from_index(loc);
+        let (row, _col) = Board::get_row_col_from_index(loc);
         match colour {
             Colour::Black => row == 0,
             Colour::White => row == BOARD_SIZE - 1,
@@ -138,7 +134,7 @@ impl Board {
             })
         });
 
-        let mut table = IterTable::new(iterator);
+        let table = IterTable::new(iterator);
         let table = table.clone().with(Style::extended());
 
         table.to_string()
@@ -146,7 +142,6 @@ impl Board {
 
     pub fn move_piece(&mut self, old_index: usize, new_index: usize) {
         if new_index >= BOARD_SIZE.pow(2) || self.squares[new_index] != None {
-            println!("{}", self.as_string());
             panic!("Invalid move from ind: {}, coord: {:?} to ind: {}, coord:{:?}", old_index, Board::get_row_col_from_index(old_index), new_index, Board::get_row_col_from_index(new_index));
         }
         let piece = self.squares[old_index].unwrap();
@@ -208,7 +203,7 @@ impl Board {
             }
             None => {}
         }
-        let mut piece: &mut Piece = self.squares[movedef.end].as_mut().unwrap();
+        let piece: &mut Piece = self.squares[movedef.end].as_mut().unwrap();
         if king || Board::piece_get_crowned(movedef.end, piece.colour)
         {
             piece.make_king();
